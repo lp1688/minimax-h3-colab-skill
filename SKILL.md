@@ -39,6 +39,10 @@ python3 scripts/runner.py batch --manifest /absolute/path/jobs.json --gpu A100 -
 
 Use `--no-high-mem` when high-memory allocation is unavailable or not desired. For a named existing session, add `--session SESSION --stop-on-complete` if the requested workflow should end that session.
 
+## Persistent model cache on Google Drive
+
+Pass `--drive-cache /content/drive/MyDrive/minimax-h3-models` (or set `H3_DRIVE_CACHE`) to `batch` or `single`. The runner mounts Google Drive on the session with `colab drivemount` before executing; the notebook then copies cached model weights from Drive to the VM's local disk and pushes fresh Hugging Face downloads back to Drive, so new sessions skip the multi-GB re-download. The first Drive authorization is per Google account: if the CLI prints an authorization URL, open it in a browser and grant access once; later mounts are non-interactive. The Drive account needs enough free space for the full model set (roughly 30 GB). Without `--drive-cache` nothing is mounted and behavior is unchanged.
+
 ## Operational limits
 
 - Each job requires 1–9 non-empty reference images, a non-empty UTF-8 prompt, and a duration from 4–15 seconds.

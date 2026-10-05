@@ -207,3 +207,63 @@ python3 scripts/runner.py --help
 ## 範圍與安全
 
 本儲存庫不包含 Google 憑證、Token、模型權重或產生的影片。Colab session 會消耗帳戶的 compute units。請不要把秘密資料放在 prompt、manifest、log 或上傳檔案中；開始真實批次前，先確認 GPU 與 timeout 設定。
+
+## 本 fork 的修改（lp1688）
+
+本 fork 在上游基礎上新增兩類修改，皆已在 Windows 11 + Git Bash 環境、透過 `google-colab-cli` 0.7.4 實際驗證。此技能同樣適用 Kimi Code（以 `./install.sh --dest ~/.kimi-code/skills` 安裝）；技能內容沒有任何 Codex 專屬之處。
+
+### Windows 支援
+
+上游流程以 macOS/Linux 為目標，以下是在 Windows 上驗證過的調整：
+
+- **`python3` 指令**：Windows 的 Python 只有 `python`。在 `~/.local/bin/python3` 放一個 shim（`#!/usr/bin/env bash` 加 `exec python "$@"`），`install.sh` 與 runner 就能原樣運作。
+- **`google-colab-cli` 0.7.4 需要兩處修補**（位於 `%APPDATA%\uv\tools\google-colab-cli\Lib\site-packages\colab_cli\`）：
+  1. `console.py`：`import termios` / `import tty` 是 Unix 專屬。包上 `try/except ImportError`，失敗時兩個名稱設為 `None`；只有互動式 console/ssh 功能會用到。
+  2. `commands/automation.py`：Drive 授權流程會等待 `open("/dev/tty")`，Windows 沒有這個裝置。在 `OSError` 時改為 `sys.stdin.readline()`（EOF 會立即繼續）。
+  重新執行 `uv tool install --force` 或 `uv tool upgrade` 會覆蓋這些修補，之後需重新套用。
+- **MSYS 路徑轉換**：Git Bash 會把長得像 Unix 路徑的參數改寫，`colab drivemount ... /content/drive` 會變成 `C:/Program Files/Git/content/drive`。直接呼叫 `colab` 且用到遠端路徑時，請先 `export MSYS_NO_PATHCONV=1`。`runner.py` 內部的呼叫不受影響，因為 Python 的 `subprocess` 不做轉換。
+- **主控台編碼**：Windows 主控台預設字碼頁（cp950/cp936）會在 runner 印出含其他字元的 Notebook 輸出時讓 Python 崩潰。請以 `PYTHONIOENCODING=utf-8`（或 `PYTHONUTF8=1`）執行 runner。沒設的話，批次可能已全部成功，卻在最後印出時回報誤導性的編碼錯誤。
+- **`os.killpg` 修正（已包含在本 fork 的 `runner.py`）**：Windows 沒有 `os.killpg`，會讓逾時終止流程崩潰並掩蓋原始錯誤。runner 現在會退回 `child.terminate()` / `child.kill()`。
+- **離線測試**：8 項儲存庫測試中有 4 項在 Windows 失敗，原因是 fake `colab`/`ffprobe` 是無副檔名的 shell script，Windows 無法執行（`WinError 193`），`shutil.which("colab")` 也找不到。這是測試框架的限制；runner 本體已用真實 CLI 驗證過。
+
+### Google Drive 持久模型快取
+
+新 session 正常需要從 Hugging Face 重新下載整套模型（約 38 GiB）。本 fork 新增可選的 Google Drive 持久快取：
+
+```bash
+python3 scripts/runner.py batch \
+  --manifest /absolute/path/jobs.json \
+  --drive-cache /content/drive/MyDrive/minimax-h3-models \
+  --output-dir /absolute/path/outputs
+```
+
+`single` 與 `H3_DRIVE_CACHE` 環境變數的用法相同。行為如下：
+
+1. runner 以 `colab drivemount` 在 session 上掛載 Google Drive。因為 `colab exec` 即使遠端程式報錯也回傳 exit 0，掛載是否成功改用執行探針印出標記（`H3_DRIVE_MOUNT_OK`）來驗證；失敗最多重試 3 次，仍不成功就放棄批次。
+2. Notebook 使用快取前會 assert `os.path.ismount('/content/drive')`，掛載失敗時絕不會把 38 GiB 權重默默寫進 VM 的暫時本機碟。
+3. 每個模型檔：快取命中就從 Drive 複製到 VM 本機碟（`shutil.copy2`）；未命中就從 Hugging Face 下載，再經 `.partial` 暫存檔與原子改名推回快取。快取目錄結構與 `ComfyUI/models/` 一致（`diffusion_models/`、`text_encoders/`、`vae/`、`loras/`）。
+
+**每台 VM 都要互動授權一次（重要）。** Drive 授權綁定單一 VM endpoint，不是整個 Google 帳號。每個新的 Colab session 都需要一次瀏覽器授權：
+
+```bash
+colab drivemount --session SESSION /content/drive   # 印出授權網址
+# 在瀏覽器開啟網址並同意（約 5 秒）
+colab drivemount --session SESSION /content/drive   # 第二次執行就會傳遞憑證並完成掛載
+```
+
+在 Colab 網頁版掛載過 Drive 並不能免除這個要求，已實測確認新 VM 仍會要求授權。由於 CLI 印出網址後會在 stdin 等待 Enter，非互動的 runner 必須把第一次 `drivemount` 當成取得網址的探針，待使用者授權後再執行第二次。
+
+**實測效能（A100 高記憶體，整套模型約 38 GiB）：**
+
+| 模型來源 | 單批次總耗時（一支 4 秒影片） |
+| --- | --- |
+| 新 session 從 Hugging Face 下載 | 約 7.5–9.5 分鐘 |
+| Drive 快取命中（Drive → VM 複製） | 約 20.5 分鐘 |
+
+Colab 上 Drive FUSE 的讀取遠慢於 Hugging Face CDN，所以快取**不會省時間**。建議用法：
+
+1. **預設**：不加 `--drive-cache`；從 Hugging Face 重抓更快也完全可靠（每個新 session 多花約 0.6 compute units）。
+2. **同一工作時段**：用 `--session 名字` 跨批次重用 session。模型只載入一次，這才是真正省時間的做法。用完記得停止 session；閒置的 A100 每小時約扣 6.77 compute units。
+3. **`--drive-cache` 留作備援**：當 Hugging Face 限流或連不上時使用，接受較慢的載入時間。
+
+整套模型約需 38 GiB Drive 空間；第一次填充快取前請先確認 Drive 配額。

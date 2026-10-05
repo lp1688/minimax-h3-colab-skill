@@ -122,11 +122,17 @@ def call_colab(
     while not eof or child.poll() is None:
         if time.monotonic() - started > timeout and child.poll() is None:
             try:
-                os.killpg(child.pid, signal.SIGTERM)
+                if hasattr(os, "killpg"):
+                    os.killpg(child.pid, signal.SIGTERM)
+                else:  # Windows: no process groups, terminate the child directly
+                    child.terminate()
                 child.wait(timeout=5)
             except (ProcessLookupError, subprocess.TimeoutExpired):
                 try:
-                    os.killpg(child.pid, signal.SIGKILL)
+                    if hasattr(os, "killpg"):
+                        os.killpg(child.pid, signal.SIGKILL)
+                    else:
+                        child.kill()
                 except ProcessLookupError:
                     pass
             reader.join(timeout=2)
@@ -414,6 +420,7 @@ def run_batch(
     output_dir: Path,
     exec_timeout: float,
     create_session_if_named: bool = False,
+    drive_cache: str = "",
 ) -> dict[str, Any]:
     if not NOTEBOOK.is_file():
         raise FileNotFoundError(f"Bundled inference notebook not found: {NOTEBOOK}")
@@ -451,6 +458,44 @@ def run_batch(
     try:
         if owns_session:
             start_session(session, gpu, high_mem)
+        if drive_cache:
+            if not drive_cache.startswith("/content/drive/"):
+                raise ValueError("Drive cache path must live under /content/drive/ (for example /content/drive/MyDrive/minimax-h3-models).")
+            progress["status"] = "mounting_drive"
+            progress["updated_at"] = now_iso()
+            write_progress(progress_path, progress)
+            # `colab exec` exits 0 even when remote code fails, so verify the
+            # mount through a printed marker instead of the return code.
+            verify_script = work_root / "verify_drive_mount.py"
+            verify_script.write_text(
+                "import os\n"
+                "print('H3_DRIVE_MOUNT_OK' if os.path.ismount('/content/drive') else 'H3_DRIVE_MOUNT_MISSING')\n",
+                encoding="utf-8",
+            )
+            mounted = False
+            last_mount_error: Exception | None = None
+            for attempt in range(1, 4):
+                try:
+                    call_colab(
+                        ["drivemount", "--session", session, "/content/drive"],
+                        label=f"mount Google Drive (attempt {attempt})",
+                        timeout=660,
+                        on_line=log_line,
+                    )
+                    probe = call_colab(
+                        ["exec", "--session", session, "--timeout", "60", "--file", str(verify_script)],
+                        label="verify Drive mount",
+                        timeout=120,
+                        on_line=log_line,
+                    )
+                    if "H3_DRIVE_MOUNT_OK" in probe:
+                        mounted = True
+                        break
+                except Exception as exc:
+                    # Fresh VMs can drop the kernel websocket mid-mount; retry.
+                    last_mount_error = exc
+            if not mounted:
+                raise RuntimeError(f"Google Drive could not be mounted on the Colab session after 3 attempts. Last error: {last_mount_error}")
         progress["status"] = "running"
         progress["updated_at"] = now_iso()
         write_progress(progress_path, progress)
@@ -497,6 +542,8 @@ def run_batch(
                 "H3_OUTPUT_PATH=" + remote_output,
                 "H3_JOB_TIMEOUT_SECONDS=" + str(min(exec_timeout, 7200)),
             ]
+            if drive_cache:
+                env_values.append("H3_DRIVE_CACHE=" + drive_cache)
             exec_args = ["exec", "--session", session, "--timeout", str(exec_timeout)]
             for value in env_values:
                 exec_args.extend(["--env", value])
@@ -596,6 +643,7 @@ def main() -> int:
     batch_parser.add_argument("--progress", type=Path)
     batch_parser.add_argument("--output-dir", type=Path, default=Path("output"))
     batch_parser.add_argument("--timeout", type=float, default=float(os.environ.get("COLAB_EXEC_TIMEOUT", "3600")))
+    batch_parser.add_argument("--drive-cache", default=os.environ.get("H3_DRIVE_CACHE", ""), help="Persistent model cache directory on mounted Google Drive (for example /content/drive/MyDrive/minimax-h3-models)")
 
     single_parser = sub.add_parser("single", help="Compatibility interface for run_colab_inference.sh")
     single_parser.add_argument("--image", "-i", action="append", required=True)
@@ -652,6 +700,7 @@ def main() -> int:
                     output_dir=output.parent,
                     exec_timeout=args.timeout,
                     create_session_if_named=True,
+                    drive_cache=os.environ.get("H3_DRIVE_CACHE", ""),
                 )
             finally:
                 temp_manifest.unlink(missing_ok=True)
@@ -670,6 +719,7 @@ def main() -> int:
                 progress_path=args.progress.expanduser().resolve() if args.progress else None,
                 output_dir=args.output_dir.expanduser().resolve(),
                 exec_timeout=args.timeout,
+                drive_cache=args.drive_cache,
             )
             print(json.dumps(progress, ensure_ascii=False))
             return 0 if progress["status"] == "completed" else 1

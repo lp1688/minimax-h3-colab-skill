@@ -207,3 +207,63 @@ The tests replace `colab` and `ffprobe` with local fakes, so they do not spend c
 ## Scope and safety
 
 This repository does not contain Google credentials, tokens, model weights, or generated videos. Colab sessions consume the account's compute units. Do not place secrets in prompts, manifests, logs, or uploaded files. Review the requested GPU and timeout before starting a real batch.
+
+## Fork additions (lp1688)
+
+This fork extends the upstream skill with two areas of changes, both validated in production runs on a Windows 11 + Git Bash machine driving Colab through `google-colab-cli` 0.7.4. The skill also works with Kimi Code (installed with `./install.sh --dest ~/.kimi-code/skills`); nothing in the skill is Codex-specific.
+
+### Windows support
+
+The upstream workflow targets macOS/Linux. These are the verified adjustments for Windows:
+
+- **`python3` command**: Windows Python ships only as `python`. Put a small shim at `~/.local/bin/python3` (`#!/usr/bin/env bash` + `exec python "$@"`) so `install.sh` and the runner work unchanged.
+- **Two patches to `google-colab-cli` 0.7.4** (under `%APPDATA%\uv\tools\google-colab-cli\Lib\site-packages\colab_cli\`):
+  1. `console.py`: `import termios` / `import tty` are Unix-only. Wrap them in `try/except ImportError` and set both names to `None`; only the interactive console/ssh feature uses them.
+  2. `commands/automation.py`: the Drive auth flow waits on `open("/dev/tty")`, which does not exist on Windows. Fall back to `sys.stdin.readline()` on `OSError` (an EOF continues immediately).
+  Re-running `uv tool install --force` or `uv tool upgrade` wipes these patches; reapply them afterwards.
+- **MSYS path conversion**: Git Bash rewrites arguments that look like Unix paths, so `colab drivemount ... /content/drive` becomes `C:/Program Files/Git/content/drive`. Export `MSYS_NO_PATHCONV=1` before calling `colab` directly with remote paths. Calls made inside `runner.py` are unaffected because Python's `subprocess` performs no conversion.
+- **Console encoding**: the Windows console default code page (cp950/cp936) crashes Python when the runner prints notebook output containing other characters. Run the runner with `PYTHONIOENCODING=utf-8` (or `PYTHONUTF8=1`). Without this, a batch can complete successfully yet exit with a misleading encoding error at the final print.
+- **`os.killpg` fix (included in this fork's `runner.py`)**: `os.killpg` does not exist on Windows, which crashed the timeout-kill path and masked the original error. The runner now falls back to `child.terminate()` / `child.kill()`.
+- **Offline tests**: 4 of the 8 repository tests fail on Windows because the fake `colab`/`ffprobe` fixtures are extension-less shell scripts that Windows cannot execute (`WinError 193`) and `shutil.which("colab")` cannot find. This is a test-harness limitation; the runner itself was verified against the real CLI.
+
+### Google Drive persistent model cache
+
+A new session normally re-downloads the full model set (~38 GiB) from Hugging Face. This fork adds an optional persistent cache on Google Drive:
+
+```bash
+python3 scripts/runner.py batch \
+  --manifest /absolute/path/jobs.json \
+  --drive-cache /content/drive/MyDrive/minimax-h3-models \
+  --output-dir /absolute/path/outputs
+```
+
+`single` and the `H3_DRIVE_CACHE` environment variable work the same way. Behavior:
+
+1. The runner mounts Google Drive on the session with `colab drivemount`. Because `colab exec` exits 0 even when remote code raises, the mount is verified by executing a probe that prints a marker (`H3_DRIVE_MOUNT_OK`); the runner retries the mount up to 3 times and aborts the batch if Drive never mounts.
+2. The notebook asserts `os.path.ismount('/content/drive')` before using the cache, so a failed mount can never silently fill the VM's ephemeral local disk with 38 GiB of weights.
+3. For each model file, a cache hit is copied from Drive to the VM's local disk (`shutil.copy2`); a miss is downloaded from Hugging Face and pushed back to the cache via a temporary `.partial` file and an atomic rename. The cache layout mirrors `ComfyUI/models/` (`diffusion_models/`, `text_encoders/`, `vae/`, `loras/`).
+
+**Per-VM interactive grant (important).** Drive authorization is tied to the individual VM endpoint, not to the Google account. Every new Colab session needs one browser approval:
+
+```bash
+colab drivemount --session SESSION /content/drive   # prints an authorization URL
+# open the URL in a browser and approve (about 5 seconds)
+colab drivemount --session SESSION /content/drive   # second run propagates and mounts
+```
+
+Granting Drive access in the Colab web UI does not remove this requirement; it was verified that a fresh VM still asks for approval. Because the CLI waits for Enter on stdin after printing the URL, non-interactive runners must treat the first `drivemount` call as a probe that surfaces the URL, then re-run it after the user approves.
+
+**Measured performance (A100 high-mem, ~38 GiB model set):**
+
+| Model source | Total batch time (one 4 s clip) |
+| --- | --- |
+| Hugging Face download on a fresh session | ~7.5–9.5 minutes |
+| Drive cache hit (copy Drive → VM) | ~20.5 minutes |
+
+Drive FUSE reads are much slower than the Hugging Face CDN on Colab, so the cache is **not** a time saver. Recommended usage:
+
+1. **Default:** omit `--drive-cache`; re-downloading from Hugging Face is faster and fully reliable (~0.6 compute units of overhead per new session).
+2. **Same working period:** reuse a named session (`--session NAME` across batches). The model loads once and stays in memory/disk, which is the real time saver. Stop the session when finished; an idle A100 bills about 6.77 compute units per hour.
+3. **Use `--drive-cache` as a fallback** when Hugging Face is rate-limiting or unreachable, accepting the slower load.
+
+The full model set needs roughly 38 GiB of Drive space; check the Drive quota before the first warmup run.
