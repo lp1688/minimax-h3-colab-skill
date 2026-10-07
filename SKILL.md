@@ -43,6 +43,20 @@ Use `--no-high-mem` when high-memory allocation is unavailable or not desired. F
 
 Pass `--drive-cache /content/drive/MyDrive/minimax-h3-models` (or set `H3_DRIVE_CACHE`) to `batch` or `single`. The runner mounts Google Drive on the session with `colab drivemount` before executing; the notebook then copies cached model weights from Drive to the VM's local disk and pushes fresh Hugging Face downloads back to Drive, so new sessions skip the multi-GB re-download. The first Drive authorization is per Google account: if the CLI prints an authorization URL, open it in a browser and grant access once; later mounts are non-interactive. The Drive account needs enough free space for the full model set (roughly 30 GB). Without `--drive-cache` nothing is mounted and behavior is unchanged.
 
+## Model variants (H3 family)
+
+Optional environment variables switch weights inside the MiniMax H3 family; the runner forwards them to the notebook when set:
+
+| Variable | Values | Effect |
+| --- | --- | --- |
+| `H3_REF2VA_VARIANT` | `int8_convrot` (default on A100), `fp8_scaled`, `bf16` | Ref2VA diffusion weights. `fp8_scaled` needs GPU capability ≥ 8.9 (not A100); `bf16` needs ~80 GiB free disk and more VRAM |
+| `H3_DIFFUSION_VARIANT` | `auto`, `fp8_scaled`, `int8_convrot` | FL2VA (`first_frame` mode) diffusion weights |
+| `H3_LORA_REPO` / `H3_LORA_REMOTE` | Hugging Face repo / file path | Swap the Turbo LoRA |
+| `H3_LORA_STRENGTH` | float, default 1.0 | LoRA strength (sane range ~0.8–1.2) |
+| `H3_STEPS` | integer (Ref2VA default 4, FL2VA default 8) | Sampler steps; more steps is slower |
+
+Different variants have distinct filenames, so the Drive cache holds them side by side without conflicts.
+
 ## Operational limits
 
 - Each job requires 1–9 non-empty reference images, a non-empty UTF-8 prompt, and a duration from 4–15 seconds.

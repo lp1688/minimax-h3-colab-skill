@@ -267,3 +267,24 @@ Drive FUSE reads are much slower than the Hugging Face CDN on Colab, so the cach
 3. **Use `--drive-cache` as a fallback** when Hugging Face is rate-limiting or unreachable, accepting the slower load.
 
 The full model set needs roughly 38 GiB of Drive space; check the Drive quota before the first warmup run.
+
+### Switching MiniMax H3 model variants
+
+The notebook picks its weights automatically, but these environment variables override the selection (the runner forwards them when set):
+
+| Variable | Values | Effect |
+| --- | --- | --- |
+| `H3_REF2VA_VARIANT` | `int8_convrot` (default on A100), `fp8_scaled`, `bf16` | Ref2VA diffusion weights. `fp8_scaled` requires GPU capability ≥ 8.9 (A100 is 8.0 and cannot use it); `bf16` needs ~80 GiB free disk and more VRAM |
+| `H3_DIFFUSION_VARIANT` | `auto`, `fp8_scaled`, `int8_convrot` | FL2VA (`first_frame` mode) diffusion weights |
+| `H3_LORA_REPO` / `H3_LORA_REMOTE` | Hugging Face repo / file path | Swap the Turbo LoRA |
+| `H3_LORA_STRENGTH` | float, default 1.0 | LoRA strength (sane range ~0.8–1.2) |
+| `H3_STEPS` | integer (Ref2VA default 4, FL2VA default 8) | Sampler steps |
+
+Example — highest-quality Ref2VA run on an A100:
+
+```bash
+H3_REF2VA_VARIANT=bf16 H3_STEPS=6 python3 scripts/runner.py batch \
+  --manifest /absolute/path/jobs.json --output-dir /absolute/path/outputs
+```
+
+Variants use distinct filenames, so the Drive cache stores them side by side; switching variants does not invalidate previously cached files. Swapping to a completely different model family (Wan, LTX, HunyuanVideo, …) is out of scope: the notebook is built around the ComfyUI H3 nodes, its VAEs, and the Ref2VA prompt format.

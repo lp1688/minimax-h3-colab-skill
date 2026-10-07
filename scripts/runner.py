@@ -544,6 +544,17 @@ def run_batch(
             ]
             if drive_cache:
                 env_values.append("H3_DRIVE_CACHE=" + drive_cache)
+            for passthrough in (
+                "H3_REF2VA_VARIANT",
+                "H3_DIFFUSION_VARIANT",
+                "H3_LORA_REPO",
+                "H3_LORA_REMOTE",
+                "H3_LORA_STRENGTH",
+                "H3_STEPS",
+            ):
+                value = os.environ.get(passthrough, "").strip()
+                if value:
+                    env_values.append(f"{passthrough}={value}")
             exec_args = ["exec", "--session", session, "--timeout", str(exec_timeout)]
             for value in env_values:
                 exec_args.extend(["--env", value])

@@ -267,3 +267,24 @@ Colab 上 Drive FUSE 的讀取遠慢於 Hugging Face CDN，所以快取**不會�
 3. **`--drive-cache` 留作備援**：當 Hugging Face 限流或連不上時使用，接受較慢的載入時間。
 
 整套模型約需 38 GiB Drive 空間；第一次填充快取前請先確認 Drive 配額。
+
+### 切換 MiniMax H3 模型變體
+
+Notebook 預設會自動選擇權重，以下環境變數可以覆寫（設定後 runner 會自動帶入）：
+
+| 變數 | 選項 | 效果 |
+| --- | --- | --- |
+| `H3_REF2VA_VARIANT` | `int8_convrot`（A100 預設）、`fp8_scaled`、`bf16` | Ref2VA diffusion 權重。`fp8_scaled` 需要 GPU capability ≥ 8.9（A100 是 8.0，**不能用**）；`bf16` 需要約 80 GiB 磁碟與更多 VRAM |
+| `H3_DIFFUSION_VARIANT` | `auto`、`fp8_scaled`、`int8_convrot` | FL2VA（`first_frame` 模式）diffusion 權重 |
+| `H3_LORA_REPO` / `H3_LORA_REMOTE` | HuggingFace repo / 檔案路徑 | 更換 Turbo LoRA |
+| `H3_LORA_STRENGTH` | 浮點數，預設 1.0 | LoRA 強度（建議範圍約 0.8–1.2） |
+| `H3_STEPS` | 整數（Ref2VA 預設 4、FL2VA 預設 8） | 採樣步數，越多越慢 |
+
+範例——在 A100 上跑最高畫質 Ref2VA：
+
+```bash
+H3_REF2VA_VARIANT=bf16 H3_STEPS=6 python3 scripts/runner.py batch \
+  --manifest /absolute/path/jobs.json --output-dir /absolute/path/outputs
+```
+
+不同變體的檔名不同，Drive 快取可以並存，切換變體不會讓已快取的檔案失效。若要換成完全不同的模型家族（Wan、LTX、HunyuanVideo 等）則超出範圍：Notebook 是圍繞 ComfyUI H3 節點、專用 VAE 與 Ref2VA prompt 格式打造的。
