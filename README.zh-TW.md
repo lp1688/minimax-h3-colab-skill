@@ -288,14 +288,16 @@ H3_REF2VA_VARIANT=bf16 H3_STEPS=6 python3 scripts/runner.py batch \
   --manifest /absolute/path/jobs.json --output-dir /absolute/path/outputs
 ```
 
-範例——換成去審查（「heretic」）版文字編碼器，例如 [Momoking/Qwen3-VL-32B-Heretic-MiniMax-H3-NVFP4](https://huggingface.co/Momoking/Qwen3-VL-32B-Heretic-MiniMax-H3-NVFP4)：
+範例——換成去審查（「heretic」）版文字編碼器：
 
 ```bash
-H3_TEXT_ENCODER_REPO=Momoking/Qwen3-VL-32B-Heretic-MiniMax-H3-NVFP4 \
-H3_TEXT_ENCODER_REMOTE=qwen3vl_32b_heretic_minimax_h3_nvfp4.safetensors \
+H3_TEXT_ENCODER_REPO=ethanfel/Qwen3-VL-32B-Ultra-Heretic-H3-ComfyUI-INT8-ConvRot \
+H3_TEXT_ENCODER_REMOTE=qwen3vl_32b_h3_ultra_uncensored_heretic_int8_convrot.safetensors \
 python3 scripts/runner.py batch --manifest /absolute/path/jobs.json --output-dir /absolute/path/outputs
 ```
 
-文字編碼器是負責理解（也可能拒絕）prompt 的元件；社群的 heretic/abliterated 版本移除了拒絕行為。更換時只有編碼器改變——diffusion 權重、VAE 與 LoRA 維持原設定。使用修改過的模型時，請自行確認符合 Colab 與 Hugging Face 的使用規範。
+文字編碼器是負責理解（也可能拒絕）prompt 的元件；社群的 heretic/abliterated 版本移除了拒絕行為。更換時只有編碼器改變——diffusion 權重、VAE 與 LoRA 維持原設定。
+
+**硬體注意**：A100 請選 INT8-ConvRot 版本（約 26 GB）。較小的 NVFP4 版本（例如 [Momoking/Qwen3-VL-32B-Heretic-MiniMax-H3-NVFP4](https://huggingface.co/Momoking/Qwen3-VL-32B-Heretic-MiniMax-H3-NVFP4)）使用 `TensorCoreNVFP4Layout`，需要 Blackwell 世代硬體（sm_120）；在 A100（sm_80）上 CLIPLoader 會載入失敗，ComfyUI 提交推論時報錯。官方 Comfy-Org 編碼器能在 A100 跑是因為它用的是 NVFP4-AWQ 格式。使用修改過的模型時，請自行確認符合 Colab 與 Hugging Face 的使用規範。
 
 不同變體的檔名不同，Drive 快取可以並存，切換變體不會讓已快取的檔案失效。若要換成完全不同的模型家族（Wan、LTX、HunyuanVideo 等）則超出範圍：Notebook 是圍繞 ComfyUI H3 節點、專用 VAE 與 Ref2VA prompt 格式打造的。

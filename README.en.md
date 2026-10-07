@@ -288,14 +288,16 @@ H3_REF2VA_VARIANT=bf16 H3_STEPS=6 python3 scripts/runner.py batch \
   --manifest /absolute/path/jobs.json --output-dir /absolute/path/outputs
 ```
 
-Example — swap in an abliterated ("heretic") text encoder such as [Momoking/Qwen3-VL-32B-Heretic-MiniMax-H3-NVFP4](https://huggingface.co/Momoking/Qwen3-VL-32B-Heretic-MiniMax-H3-NVFP4):
+Example — swap in an abliterated ("heretic") text encoder:
 
 ```bash
-H3_TEXT_ENCODER_REPO=Momoking/Qwen3-VL-32B-Heretic-MiniMax-H3-NVFP4 \
-H3_TEXT_ENCODER_REMOTE=qwen3vl_32b_heretic_minimax_h3_nvfp4.safetensors \
+H3_TEXT_ENCODER_REPO=ethanfel/Qwen3-VL-32B-Ultra-Heretic-H3-ComfyUI-INT8-ConvRot \
+H3_TEXT_ENCODER_REMOTE=qwen3vl_32b_h3_ultra_uncensored_heretic_int8_convrot.safetensors \
 python3 scripts/runner.py batch --manifest /absolute/path/jobs.json --output-dir /absolute/path/outputs
 ```
 
-The text encoder is the component that interprets (and can refuse) prompts; community "heretic"/abliterated builds remove refusal behavior. Only the encoder changes — diffusion weights, VAEs, and the LoRA stay as configured. You are responsible for complying with the Colab and Hugging Face acceptable-use policies when running modified models.
+The text encoder is the component that interprets (and can refuse) prompts; community "heretic"/abliterated builds remove refusal behavior. Only the encoder changes — diffusion weights, VAEs, and the LoRA stay as configured.
+
+**Hardware note:** pick the INT8-ConvRot build (~26 GB) for A100. The smaller NVFP4 builds (e.g. [Momoking/Qwen3-VL-32B-Heretic-MiniMax-H3-NVFP4](https://huggingface.co/Momoking/Qwen3-VL-32B-Heretic-MiniMax-H3-NVFP4)) use `TensorCoreNVFP4Layout`, which needs Blackwell-generation hardware (sm_120); on an A100 (sm_80) the CLIPLoader fails and the ComfyUI prompt submission errors out. The official Comfy-Org encoder works on A100 because it uses the NVFP4-AWQ layout instead. You are responsible for complying with the Colab and Hugging Face acceptable-use policies when running modified models.
 
 Variants use distinct filenames, so the Drive cache stores them side by side; switching variants does not invalidate previously cached files. Swapping to a completely different model family (Wan, LTX, HunyuanVideo, …) is out of scope: the notebook is built around the ComfyUI H3 nodes, its VAEs, and the Ref2VA prompt format.
