@@ -51,6 +51,7 @@ Optional environment variables switch weights inside the MiniMax H3 family; the 
 | --- | --- | --- |
 | `H3_REF2VA_VARIANT` | `int8_convrot` (default on A100), `fp8_scaled`, `bf16` | Ref2VA diffusion weights. `fp8_scaled` needs GPU capability ≥ 8.9 (not A100); `bf16` needs ~80 GiB free disk and more VRAM |
 | `H3_DIFFUSION_VARIANT` | `auto`, `fp8_scaled`, `int8_convrot` | FL2VA (`first_frame` mode) diffusion weights |
+| `H3_TEXT_ENCODER_REPO` / `H3_TEXT_ENCODER_REMOTE` | Hugging Face repo / file path | Swap the Qwen3-VL text encoder (e.g. an abliterated "heretic" build). The file is placed in `models/text_encoders/` and the workflow picks it up automatically |
 | `H3_LORA_REPO` / `H3_LORA_REMOTE` | Hugging Face repo / file path | Swap the Turbo LoRA |
 | `H3_LORA_STRENGTH` | float, default 1.0 | LoRA strength (sane range ~0.8–1.2) |
 | `H3_STEPS` | integer (Ref2VA default 4, FL2VA default 8) | Sampler steps; more steps is slower |

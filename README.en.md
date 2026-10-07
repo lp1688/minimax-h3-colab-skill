@@ -276,6 +276,7 @@ The notebook picks its weights automatically, but these environment variables ov
 | --- | --- | --- |
 | `H3_REF2VA_VARIANT` | `int8_convrot` (default on A100), `fp8_scaled`, `bf16` | Ref2VA diffusion weights. `fp8_scaled` requires GPU capability ≥ 8.9 (A100 is 8.0 and cannot use it); `bf16` needs ~80 GiB free disk and more VRAM |
 | `H3_DIFFUSION_VARIANT` | `auto`, `fp8_scaled`, `int8_convrot` | FL2VA (`first_frame` mode) diffusion weights |
+| `H3_TEXT_ENCODER_REPO` / `H3_TEXT_ENCODER_REMOTE` | Hugging Face repo / file path | Swap the Qwen3-VL text encoder (e.g. an abliterated "heretic" build). The file lands in `models/text_encoders/` and the workflow's CLIPLoader picks it up automatically |
 | `H3_LORA_REPO` / `H3_LORA_REMOTE` | Hugging Face repo / file path | Swap the Turbo LoRA |
 | `H3_LORA_STRENGTH` | float, default 1.0 | LoRA strength (sane range ~0.8–1.2) |
 | `H3_STEPS` | integer (Ref2VA default 4, FL2VA default 8) | Sampler steps |
@@ -286,5 +287,15 @@ Example — highest-quality Ref2VA run on an A100:
 H3_REF2VA_VARIANT=bf16 H3_STEPS=6 python3 scripts/runner.py batch \
   --manifest /absolute/path/jobs.json --output-dir /absolute/path/outputs
 ```
+
+Example — swap in an abliterated ("heretic") text encoder such as [Momoking/Qwen3-VL-32B-Heretic-MiniMax-H3-NVFP4](https://huggingface.co/Momoking/Qwen3-VL-32B-Heretic-MiniMax-H3-NVFP4):
+
+```bash
+H3_TEXT_ENCODER_REPO=Momoking/Qwen3-VL-32B-Heretic-MiniMax-H3-NVFP4 \
+H3_TEXT_ENCODER_REMOTE=qwen3vl_32b_heretic_minimax_h3_nvfp4.safetensors \
+python3 scripts/runner.py batch --manifest /absolute/path/jobs.json --output-dir /absolute/path/outputs
+```
+
+The text encoder is the component that interprets (and can refuse) prompts; community "heretic"/abliterated builds remove refusal behavior. Only the encoder changes — diffusion weights, VAEs, and the LoRA stay as configured. You are responsible for complying with the Colab and Hugging Face acceptable-use policies when running modified models.
 
 Variants use distinct filenames, so the Drive cache stores them side by side; switching variants does not invalidate previously cached files. Swapping to a completely different model family (Wan, LTX, HunyuanVideo, …) is out of scope: the notebook is built around the ComfyUI H3 nodes, its VAEs, and the Ref2VA prompt format.

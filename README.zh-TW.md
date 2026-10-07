@@ -276,6 +276,7 @@ Notebook 預設會自動選擇權重，以下環境變數可以覆寫（設定�
 | --- | --- | --- |
 | `H3_REF2VA_VARIANT` | `int8_convrot`（A100 預設）、`fp8_scaled`、`bf16` | Ref2VA diffusion 權重。`fp8_scaled` 需要 GPU capability ≥ 8.9（A100 是 8.0，**不能用**）；`bf16` 需要約 80 GiB 磁碟與更多 VRAM |
 | `H3_DIFFUSION_VARIANT` | `auto`、`fp8_scaled`、`int8_convrot` | FL2VA（`first_frame` 模式）diffusion 權重 |
+| `H3_TEXT_ENCODER_REPO` / `H3_TEXT_ENCODER_REMOTE` | HuggingFace repo / 檔案路徑 | 更換 Qwen3-VL 文字編碼器（例如去審查的「heretic」版本）。檔案會放進 `models/text_encoders/`，workflow 的 CLIPLoader 會自動載入 |
 | `H3_LORA_REPO` / `H3_LORA_REMOTE` | HuggingFace repo / 檔案路徑 | 更換 Turbo LoRA |
 | `H3_LORA_STRENGTH` | 浮點數，預設 1.0 | LoRA 強度（建議範圍約 0.8–1.2） |
 | `H3_STEPS` | 整數（Ref2VA 預設 4、FL2VA 預設 8） | 採樣步數，越多越慢 |
@@ -286,5 +287,15 @@ Notebook 預設會自動選擇權重，以下環境變數可以覆寫（設定�
 H3_REF2VA_VARIANT=bf16 H3_STEPS=6 python3 scripts/runner.py batch \
   --manifest /absolute/path/jobs.json --output-dir /absolute/path/outputs
 ```
+
+範例——換成去審查（「heretic」）版文字編碼器，例如 [Momoking/Qwen3-VL-32B-Heretic-MiniMax-H3-NVFP4](https://huggingface.co/Momoking/Qwen3-VL-32B-Heretic-MiniMax-H3-NVFP4)：
+
+```bash
+H3_TEXT_ENCODER_REPO=Momoking/Qwen3-VL-32B-Heretic-MiniMax-H3-NVFP4 \
+H3_TEXT_ENCODER_REMOTE=qwen3vl_32b_heretic_minimax_h3_nvfp4.safetensors \
+python3 scripts/runner.py batch --manifest /absolute/path/jobs.json --output-dir /absolute/path/outputs
+```
+
+文字編碼器是負責理解（也可能拒絕）prompt 的元件；社群的 heretic/abliterated 版本移除了拒絕行為。更換時只有編碼器改變——diffusion 權重、VAE 與 LoRA 維持原設定。使用修改過的模型時，請自行確認符合 Colab 與 Hugging Face 的使用規範。
 
 不同變體的檔名不同，Drive 快取可以並存，切換變體不會讓已快取的檔案失效。若要換成完全不同的模型家族（Wan、LTX、HunyuanVideo 等）則超出範圍：Notebook 是圍繞 ComfyUI H3 節點、專用 VAE 與 Ref2VA prompt 格式打造的。

@@ -547,6 +547,8 @@ def run_batch(
             for passthrough in (
                 "H3_REF2VA_VARIANT",
                 "H3_DIFFUSION_VARIANT",
+                "H3_TEXT_ENCODER_REPO",
+                "H3_TEXT_ENCODER_REMOTE",
                 "H3_LORA_REPO",
                 "H3_LORA_REMOTE",
                 "H3_LORA_STRENGTH",
