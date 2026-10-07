@@ -298,6 +298,6 @@ python3 scripts/runner.py batch --manifest /absolute/path/jobs.json --output-dir
 
 文字編碼器是負責理解（也可能拒絕）prompt 的元件；社群的 heretic/abliterated 版本移除了拒絕行為。更換時只有編碼器改變——diffusion 權重、VAE 與 LoRA 維持原設定。
 
-**硬體注意**：A100 請選 INT8-ConvRot 版本（約 26 GB）。較小的 NVFP4 版本（例如 [Momoking/Qwen3-VL-32B-Heretic-MiniMax-H3-NVFP4](https://huggingface.co/Momoking/Qwen3-VL-32B-Heretic-MiniMax-H3-NVFP4)）使用 `TensorCoreNVFP4Layout`，需要 Blackwell 世代硬體（sm_120）；在 A100（sm_80）上 CLIPLoader 會載入失敗，ComfyUI 提交推論時報錯。官方 Comfy-Org 編碼器能在 A100 跑是因為它用的是 NVFP4-AWQ 格式。使用修改過的模型時，請自行確認符合 Colab 與 Hugging Face 的使用規範。
+**A100（sm_80）上實測可用兩種版本**：上面的 INT8-ConvRot 版（約 26 GB），以及更小的 NVFP4 版 [Momoking/Qwen3-VL-32B-Heretic-MiniMax-H3-NVFP4](https://huggingface.co/Momoking/Qwen3-VL-32B-Heretic-MiniMax-H3-NVFP4)（約 15.7 GB，remote 檔名 `qwen3vl_32b_heretic_minimax_h3_nvfp4.safetensors`）。NVFP4 版的 README 聲稱需要 Blackwell 硬體，但實測 ComfyUI 在 A100 上會以軟體路徑載入 `TensorCoreNVFP4Layout`，產出與 prompt 相符，建議優先使用（下載量少 40%）。使用修改過的模型時，請自行確認符合 Colab 與 Hugging Face 的使用規範。
 
 不同變體的檔名不同，Drive 快取可以並存，切換變體不會讓已快取的檔案失效。若要換成完全不同的模型家族（Wan、LTX、HunyuanVideo 等）則超出範圍：Notebook 是圍繞 ComfyUI H3 節點、專用 VAE 與 Ref2VA prompt 格式打造的。
